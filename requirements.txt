@@ -3,3 +3,4 @@ jsonpickle==3.0.1
 python-decouple==3.8
 python-steam-api==1.0.8
 numpy==1.24.2
+Jinja2==3.1.2

@@ -2,10 +2,12 @@ import json
 import os
 import sys
 import time
+import webbrowser
 
 import numpy
 from decouple import config
 from eta import ETA
+from jinja2 import Environment, FileSystemLoader
 from steam import Steam
 
 """
@@ -319,12 +321,46 @@ high_games = high_games[0:10]
 """""""""""""""""""""""""""""""""""""""
 Formatting
 """""""""""""""""""""""""""""""""""""""
+print("Generating output file ...")  # Status Message
 
-# HTML output?
-# PNG output?
+# Basic metrics
+ninety_games = 0
+one_games = 0
+achievements_unlocked = 0
+achievements_left = 0
+for game in games:
+    ninety_games += 1 if game['completion'] > 0.9 else 0
+    one_games += 1 if game['achievements_done'] == 1 else 0
+    achievements_unlocked += game['achievements_done']
+    achievements_left += game['achievements_total']
+achievements_left -= achievements_unlocked
 
-"""
-for file in files:
-    if os.path.exists(file):
-        os.remove(file)
-"""
+# Set up template and file
+results_filename = "agcr.html"
+environment = Environment(loader=FileSystemLoader("./"))
+template = environment.get_template("agcr.j2.html")
+
+# Render output file
+context = {
+    'agcr': agcr,
+    'games_count': '{:n}'.format(len(games_that_count)),
+    'ninety_games': '{:n}'.format(ninety_games),
+    'one_games': '{:n}'.format(one_games),
+    'achievements_unlocked': '{:n}'.format(achievements_unlocked),
+    'achievements_left': '{:n}'.format(achievements_left),
+    'failed_games': failed_games,
+    'highest_impact': high_outliers,
+    'hilo_games': hilo_games,
+    'high_games': high_games,
+}
+
+with open(results_filename, mode="w", encoding="utf-8") as results:
+    results.write(template.render(context))
+    print(f"Wrote to '{results_filename}'. It is being opened in your browser")  # Status Message
+    webbrowser.open('file://' + os.path.realpath(results_filename))
+
+# Clean up
+if not DEBUG:
+    for file in files:
+        if os.path.exists(file):
+            os.remove(file)
