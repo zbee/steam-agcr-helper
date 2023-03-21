@@ -1,3 +1,7 @@
+"""
+Created in 2023 by Ethan Henderson (zbee) <ethan@zbee.codes> (zbee.codes)
+"""
+
 import json
 import os
 import sys
@@ -24,6 +28,9 @@ BLACK_LISTED_GAMES = [
     "Garry's Mod",
     "Total War: WARHAMMER II",
     "Surgeon Simulator",
+    "SMITE",
+    "Europa Universalis IV",
+    "Cookie Clicker",
 ]
 
 # If you want debug files to be saved for your review after this runs
@@ -49,7 +56,13 @@ files = [
 ]
 
 # Continuously ask for a username
+bypassed = False
 while user == 'No match':
+    # Accept Steam IDs (no vanity URL set) via short-circuit
+    if username.isdigit():
+        steam_id = int(username)
+        bypassed = True
+        break
     # Show where to find the value needed if a username is not working
     if username != '':
         print('User could not be found')
@@ -60,10 +73,11 @@ while user == 'No match':
     user = steam.users.search_user(search=username)
 
 # Load the steam id
-if type(user) is not dict:
-    sys.exit('User not loaded')
+if not bypassed:
+    if type(user) is not dict:
+        sys.exit('User not loaded')
 
-steam_id = user['player']['steamid']
+    steam_id = user['player']['steamid']
 
 """""""""""""""""""""""""""""""""""""""
 Actual data loading
@@ -94,6 +108,7 @@ with open('debug.log.json', 'a') as log:
             )
         except:
             if DEBUG: log.write(f"user data load: {app_id} ({game['name']}) \n")
+            failed_games.append(game['name'])
             continue
 
         # Avoid Rate limiting
@@ -107,10 +122,10 @@ with open('debug.log.json', 'a') as log:
                 continue
             if 'achievements' not in user_stats['playerstats'].keys():
                 if DEBUG: log.write(f"app no achievements: {app_id} ({game['name']}) \n")
-                failed_games.append(game['name'])
                 continue
         except:
             if DEBUG: log.write(f"user data: {app_id} ({game['name']}) \n")
+            failed_games.append(game['name'])
             continue
 
         """""""""""""""""""""""""""""""""""""""
@@ -125,8 +140,6 @@ with open('debug.log.json', 'a') as log:
             achievement['game'] = app_id
             achievement['game_name'] = game['name']
             achievement['playtime'] = game['playtime_forever']
-            achievement['image'] = 'http://media.steampowered.com/steamcommunity/public/images/apps/' + \
-                                   game['img_icon_url'] + '.jpg'
             achievements.append(achievement)
 
 del achievement
@@ -153,7 +166,6 @@ for achievement in achievements:
         games[game] = {
             'app_id': game,
             'app_name': achievement['game_name'],
-            'app_image': achievement['image'],
             'counts': achievement['achieved'],
             'completion': 0.0,
             'achievements_total': 1,
@@ -262,14 +274,12 @@ for game in games:
         if game['completion'] < 0.05 and 60 < game['playtime'] < 300:
             black_listed_games.append(game['app_name'])
 
-
 # Games that are unusually high impact on AGCR
 # Determine upper threshold of "normal" impact of games # Top 10%
 impact_upper_quartile = numpy.array(running_completion_percent)
-impact_upper_quartile = numpy.quantile(impact_upper_quartile, 0.90)
+impact_upper_quartile = numpy.quantile(impact_upper_quartile, 0.9)
 
 high_outliers = []
-
 
 # List outliers
 for game in games:
@@ -277,21 +287,57 @@ for game in games:
         if game['impact'] > impact_upper_quartile:
             high_outliers.append(game)
 
+# Pad out this list so that all sections are the same quantity of games
+if len(high_outliers) < 10:
+    high_games = games.copy()
+    high_games_remove = []
+
+    for game in high_games:
+        if (game['app_name'] in black_listed_games) or (game in high_outliers):
+            high_games_remove.append(game)
+    for game in high_games_remove:
+        high_games.remove(game)
+
+    high_outliers.extend(high_games)
+
+    del game
+    del high_games
+    del high_games_remove
+
+high_outliers.sort(key=lambda x: x['impact'], reverse=True)
 high_outliers = high_outliers[0:10]
 
 with open('outliers.json', 'w') as file:
     json.dump(high_outliers, file, indent=2)
 del file
 
+# Games that are >80% complete
+eighty_games_list = games.copy()
+eighty_games_list_remove = []
+
+for game in eighty_games_list:
+    if (game['app_name'] in black_listed_games) or (game['completion'] < 0.8) or (game['completion'] == 1.0):
+        eighty_games_list_remove.append(game)
+for game in eighty_games_list_remove:
+    eighty_games_list.remove(game)
+del game
+del eighty_games_list_remove
+
+eighty_games_list.sort(key=lambda x: x['completion'], reverse=True)
+eighty_games_list = eighty_games_list[0:22]
 
 # Games that are high impact and low achievement count
 hilo_games = games.copy()
+hilo_games_remove = []
 
-for key, game in enumerate(hilo_games):
-    if game in black_listed_games or game in high_outliers or game['achievements_total'] > 50:
-        del hilo_games[key]
-del key
+for game in hilo_games:
+    if (game['app_name'] in black_listed_games) or (game in high_outliers) or (game in eighty_games_list) \
+            or (game['achievements_total'] > 50):
+        hilo_games_remove.append(game)
+for game in hilo_games_remove:
+    hilo_games.remove(game)
 del game
+del hilo_games_remove
 
 hilo_games.sort(key=lambda x: (x['impact'], x['achievements_total']))
 hilo_games.reverse()
@@ -301,22 +347,36 @@ with open('hilo_games.json', 'w') as file:
     json.dump(high_outliers, file, indent=2)
 del file
 
-
 # Games that are just high impact
 high_games = games.copy()
+high_games_remove = []
 
-for key, game in enumerate(high_games):
-    if game in black_listed_games or game in high_outliers or game in hilo_games:
-        del high_games[key]
-del key
+for game in high_games:
+    if (game['app_name'] in black_listed_games) or (game in high_outliers) or (game in hilo_games) \
+            or (game in eighty_games_list):
+        high_games_remove.append(game)
+for game in high_games_remove:
+    high_games.remove(game)
 del game
 
-high_games.sort(key=lambda x: x['impact'])
-high_games.reverse()
+high_games.sort(key=lambda x: x['impact'], reverse=True)
 high_games = high_games[0:10]
 
-# TODO: Find a list of achievements with high global completion% that are not done in high impact games
-# TODO: Find a list of high global completion% achievement clusters in low play time games
+# Games that are only 1 achievement
+one_games_list = games.copy()
+one_games_list_remove = []
+
+for game in one_games_list:
+    if (game['app_name'] in black_listed_games) or (game['achievements_done'] != 1):
+        one_games_list_remove.append(game)
+for game in one_games_list_remove:
+    one_games_list.remove(game)
+del game
+del one_games_list_remove
+one_games_list = one_games_list[0:22]
+
+# TODO: List of achievements with high global completion% that are not done in high impact games
+# TODO: List of high global completion% achievement clusters in low play time games (finishing a campaign)
 
 """""""""""""""""""""""""""""""""""""""
 Formatting
@@ -324,27 +384,27 @@ Formatting
 print("Generating output file ...")  # Status Message
 
 # Basic metrics
-ninety_games = 0
+eighty_games = 0
 one_games = 0
 achievements_unlocked = 0
 achievements_left = 0
 for game in games:
-    ninety_games += 1 if game['completion'] > 0.9 else 0
+    eighty_games += 1 if 0.8 < game['completion'] < 1.0 else 0
     one_games += 1 if game['achievements_done'] == 1 else 0
-    achievements_unlocked += game['achievements_done']
-    achievements_left += game['achievements_total']
+    achievements_unlocked += game['achievements_done'] if game['counts'] else 0
+    achievements_left += game['achievements_total'] if game['counts'] else 0
 achievements_left -= achievements_unlocked
 
 # Set up template and file
 results_filename = "agcr.html"
 environment = Environment(loader=FileSystemLoader("./"))
-template = environment.get_template("agcr.j2.html")
+template = environment.get_template("template.html")
 
 # Render output file
 context = {
     'agcr': agcr,
     'games_count': '{:n}'.format(len(games_that_count)),
-    'ninety_games': '{:n}'.format(ninety_games),
+    'eighty_games': '{:n}'.format(eighty_games),
     'one_games': '{:n}'.format(one_games),
     'achievements_unlocked': '{:n}'.format(achievements_unlocked),
     'achievements_left': '{:n}'.format(achievements_left),
@@ -352,6 +412,8 @@ context = {
     'highest_impact': high_outliers,
     'hilo_games': hilo_games,
     'high_games': high_games,
+    'eighty_games_list': eighty_games_list,
+    'one_games_list': one_games_list,
 }
 
 with open(results_filename, mode="w", encoding="utf-8") as results:
