@@ -1,6 +1,7 @@
 """
 Created in 2023 by Ethan Henderson (zbee) <ethan@zbee.codes> (zbee.codes)
 """
+# TODO: Reorganize into a class to allow for code-reuse and to find functionality easier
 
 import json
 import os
@@ -19,6 +20,7 @@ Config
 """
 # Amount of time (in seconds) to wait between API requests
 DELAY = 0.75  # >0.75 recommended
+# TODO: Find the real minimum
 
 # Games you do not want to be recommended to play
 # If you want to add to this, turn on DEBUG and you can copy names from games.json
@@ -34,7 +36,7 @@ BLACK_LISTED_GAMES = [
 ]
 
 # If you want debug files to be saved for your review after this runs
-DEBUG = True
+DEBUG = False
 
 """
 Setup data
@@ -79,6 +81,8 @@ if not bypassed:
 
     steam_id = user['player']['steamid']
 
+# TODO: Try to get the user's profile picture to put top-right
+
 """""""""""""""""""""""""""""""""""""""
 Actual data loading
 """""""""""""""""""""""""""""""""""""""
@@ -87,6 +91,8 @@ print("Downloading game and achievement data from Steam ...")  # Status Message
 # Get a list of the user's games
 games = steam.users.get_owned_games(steam_id=steam_id)
 total = len(games['games'])
+
+# TODO: Bring back app data checking, try to use it to load achievements a 2nd way + filter out software/betas + global%
 
 achievements = []
 failed_games = []
@@ -146,6 +152,7 @@ del achievement
 del game_achievements
 del user_stats
 del log
+if not DEBUG: failed_games = []
 eta.done()
 
 """""""""""""""""""""""""""""""""""""""
@@ -210,8 +217,6 @@ agcr = '{0:.2f}'.format(agcr)
 
 print('games that count: ' + str(len(games_that_count)))
 print('AGCR: ' + str(agcr) + '%')
-
-# https://steamcommunity.com/sharedfiles/filedetails/?id=650166273
 
 """""""""""""""""""""""""""""""""""""""
 AGCR-impact calculations
@@ -281,6 +286,7 @@ impact_upper_quartile = numpy.quantile(impact_upper_quartile, 0.9)
 
 high_outliers = []
 
+# TODO: This (and everything) seems to be biased away from numbers <1% - switch AGCR to use numpy numbers?
 # List outliers
 for game in games:
     if game['counts'] and game['app_name'] not in black_listed_games:
@@ -311,6 +317,7 @@ with open('outliers.json', 'w') as file:
     json.dump(high_outliers, file, indent=2)
 del file
 
+# TODO: Switch 80% to 75%
 # Games that are >80% complete
 eighty_games_list = games.copy()
 eighty_games_list_remove = []
@@ -362,6 +369,7 @@ del game
 high_games.sort(key=lambda x: x['impact'], reverse=True)
 high_games = high_games[0:10]
 
+# TODO: 1-achievement list displays 10 less than the count at the top of the page
 # Games that are only 1 achievement
 one_games_list = games.copy()
 one_games_list_remove = []
