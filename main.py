@@ -3,15 +3,33 @@ import os
 import sys
 import time
 
-import jsonpickle
 import numpy
 from decouple import config
 from eta import ETA
 from steam import Steam
 
-# Config
-DEBUG_APP_LOAD = False
-DELAY = 1  # minimum of 0.75, recently-rate-limited minimum of 1.2
+"""
+Config
+"""
+# Amount of time (in seconds) to wait between API requests
+DELAY = 0.75  # >0.75 recommended
+
+# Games you do not want to be recommended to play
+# If you want to add to this, turn on DEBUG and you can copy names from games.json
+BLACK_LISTED_GAMES = [
+    "Dead by Daylight",
+    "Team Fortress 2",
+    "Garry's Mod",
+    "Total War: WARHAMMER II",
+    "Surgeon Simulator",
+]
+
+# If you want debug files to be saved for your review after this runs
+DEBUG = True
+
+"""
+Setup data
+"""
 
 # Set up API
 KEY = config('STEAM_API_KEY')
@@ -25,6 +43,7 @@ files = [
     'counting.json',
     'outliers.json',
     'games.json',
+    'hilo_games.json',
 ]
 
 # Continuously ask for a username
@@ -51,10 +70,11 @@ print("Downloading game and achievement data from Steam ...")  # Status Message
 
 # Get a list of the user's games
 games = steam.users.get_owned_games(steam_id=steam_id)
+total = len(games['games'])
 
 achievements = []
+failed_games = []
 
-total = len(games['games'])
 eta = ETA(total, modulo=2)
 
 # Reset logging each time
@@ -65,70 +85,30 @@ with open('debug.log.json', 'a') as log:
         eta.print_status()
         app_id = int(game['appid'])
 
-        # Load game data
+        # Load the user's achievement info for this game
         try:
-            app = steam.apps.get_app_details(app_id=app_id)
+            user_stats = steam.apps.get_user_achievements(
+                steam_id=int(steam_id), app_id=app_id
+            )
         except:
-            if DEBUG_APP_LOAD: print('app data load: ' + str(app_id))
-            log.write('app data load: ' + str(app_id) + '\n')
+            if DEBUG: log.write(f"user data load: {app_id} ({game['name']}) \n")
             continue
-        app = jsonpickle.loads(app)
 
         # Avoid Rate limiting
         time.sleep(DELAY)
 
-        # Skip failed games
-        try:
-            if not app[str(app_id)]['success']:
-                if DEBUG_APP_LOAD: print('app has data: ' + str(app_id))
-                log.write('app has data: ' + str(app_id) + '\n')
-                continue
-        except:
-            if DEBUG_APP_LOAD: print('app data: ' + str(app_id))
-            log.write('app data: ' + str(app_id) + '\n')
-            continue
-
-        # TODO: 2 logs above + 1 below: print the name of apps that failed
-
-        app_achievements = 0
-        # Load number of achievements in game
-        try:
-            if "achievements" in app[str(app_id)]['data'].keys():
-                app_achievements = int(app[str(app_id)]['data']['achievements']['total'])
-        except:
-            if DEBUG_APP_LOAD: print('app achievement data: ' + str(app_id))
-            log.write('app achievement data: ' + str(app_id) + '\n')
-            continue
-
-        # Skips games with no achievements
-        if app_achievements < 1:
-            if DEBUG_APP_LOAD: print('app achievement count: ' + str(app_id))
-            log.write('app achievement count: ' + str(app_id) + '\n')
-            continue
-
-        # TODO: Do user achievements earlier to avoid loading non-counting games
-        # # Plus this would make the Progress bar more accurate
-
-        # Load the user's achievement info for this game
-        try:
-            user_stats = steam.apps.get_user_achievements(steam_id=int(steam_id), app_id=app_id)
-        except:
-            if DEBUG_APP_LOAD: print('user data load: ' + str(app_id))
-            log.write('user data load: ' + str(app_id) + '\n')
-            continue
-
-        # Avoid Rate limiting
-        time.sleep(DELAY * 0.25)
-
         # Skip games that failed to load achievements (unknown reason why)
         try:
             if not user_stats['playerstats']['success']:
-                if DEBUG_APP_LOAD: print('app has user data: ' + str(app_id))
-                log.write('app has user data: ' + str(app_id) + '\n')
+                if DEBUG: log.write(f"app has user data: {app_id} ({game['name']}) \n")
+                failed_games.append(game['name'])
+                continue
+            if 'achievements' not in user_stats['playerstats'].keys():
+                if DEBUG: log.write(f"app no achievements: {app_id} ({game['name']}) \n")
+                failed_games.append(game['name'])
                 continue
         except:
-            if DEBUG_APP_LOAD: print('user data: ' + str(app_id))
-            log.write('user data: ' + str(app_id) + '\n')
+            if DEBUG: log.write(f"user data: {app_id} ({game['name']}) \n")
             continue
 
         """""""""""""""""""""""""""""""""""""""
@@ -141,11 +121,13 @@ with open('debug.log.json', 'a') as log:
         for achievement in game_achievements:
             achievement['achieved'] = achievement['achieved'] == 1  # Change truthy values to a boolean
             achievement['game'] = app_id
+            achievement['game_name'] = game['name']
+            achievement['playtime'] = game['playtime_forever']
+            achievement['image'] = 'http://media.steampowered.com/steamcommunity/public/images/apps/' + \
+                                   game['img_icon_url'] + '.jpg'
             achievements.append(achievement)
 
 del achievement
-del app_achievements
-del app
 del game_achievements
 del user_stats
 del log
@@ -168,11 +150,14 @@ for achievement in achievements:
     if game not in games.keys():
         games[game] = {
             'app_id': game,
+            'app_name': achievement['game_name'],
+            'app_image': achievement['image'],
             'counts': achievement['achieved'],
             'completion': 0.0,
             'achievements_total': 1,
             'achievements_done': 1 if achievement['achieved'] else 0,
             'impact': 0.0,
+            'playtime': achievement['playtime'],
             'achievements': {
                 achievement['apiname']: achievement['achieved']
             }
@@ -259,30 +244,77 @@ del file
 """""""""""""""""""""""""""""""""""""""
 Resolution calculations
 """""""""""""""""""""""""""""""""""""""
+print("Calculation resolution methods ...")  # Status Message
 
-# TODO: Rework this to work off of impact, to find high impact games with low achievements-left or totals
+# List of games that are "black-listed"
+"""
+These are games that will not be included in any of the recommended sections
+>1h play time, <5h play time, <5% achievements + manual entries
+The automatically added games are meant to be "Games you tried to and did not like"
+"""
+black_listed_games = []
+black_listed_games.extend(BLACK_LISTED_GAMES)
 
-# Determine lower threshold to separate outliers
-completion_lower_quartile = numpy.array(running_completion_percent)
-completion_lower_quartile = numpy.quantile(completion_lower_quartile, 0.1)  # Bottom 10%
+for game in games:
+    if game['app_name'] not in BLACK_LISTED_GAMES:
+        if game['completion'] < 0.05 and 60 < game['playtime'] < 300:
+            black_listed_games.append(game['app_name'])
 
-low_outliers = []
+
+# Games that are unusually high impact on AGCR
+# Determine upper threshold of "normal" impact of games # Top 10%
+impact_upper_quartile = numpy.array(running_completion_percent)
+impact_upper_quartile = numpy.quantile(impact_upper_quartile, 0.90)
+
+high_outliers = []
+
 
 # List outliers
 for game in games:
-    if game['counts']:
-        if game['completion'] < completion_lower_quartile:
-            low_outliers.append(game)
+    if game['counts'] and game['app_name'] not in black_listed_games:
+        if game['impact'] > impact_upper_quartile:
+            high_outliers.append(game)
 
-low_outliers.sort(key=lambda x: x['achievements_done'], reverse=True)
-low_outliers.sort(key=lambda x: x['achievements_total'])
+high_outliers = high_outliers[0:10]
 
 with open('outliers.json', 'w') as file:
-    json.dump(low_outliers, file, indent=2)
+    json.dump(high_outliers, file, indent=2)
 del file
 
+
+# Games that are high impact and low achievement count
+hilo_games = games.copy()
+
+for key, game in enumerate(hilo_games):
+    if game in black_listed_games or game in high_outliers or game['achievements_total'] > 50:
+        del hilo_games[key]
+del key
+del game
+
+hilo_games.sort(key=lambda x: (x['impact'], x['achievements_total']))
+hilo_games.reverse()
+hilo_games = hilo_games[0:10]
+
+with open('hilo_games.json', 'w') as file:
+    json.dump(high_outliers, file, indent=2)
+del file
+
+
+# Games that are just high impact
+high_games = games.copy()
+
+for key, game in enumerate(high_games):
+    if game in black_listed_games or game in high_outliers or game in hilo_games:
+        del high_games[key]
+del key
+del game
+
+high_games.sort(key=lambda x: x['impact'])
+high_games.reverse()
+high_games = high_games[0:10]
+
 # TODO: Find a list of achievements with high global completion% that are not done in high impact games
-# TODO Find a list of high global completion% achievement clusters in low play time games
+# TODO: Find a list of high global completion% achievement clusters in low play time games
 
 """""""""""""""""""""""""""""""""""""""
 Formatting
