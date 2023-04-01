@@ -127,7 +127,7 @@ with open('debug.log.json', 'a') as log:
                 failed_games.append(game['name'])
                 continue
             if 'achievements' not in user_stats['playerstats'].keys():
-                if DEBUG: log.write(f"app no achievements: {app_id} ({game['name']}) \n")
+                # if DEBUG: log.write(f"app no achievements: {app_id} ({game['name']}) \n")
                 continue
         except:
             if DEBUG: log.write(f"user data: {app_id} ({game['name']}) \n")
@@ -215,8 +215,13 @@ del completion
 agcr = sum(running_completion_percent) / len(games_that_count) * 100
 agcr = '{0:.2f}'.format(agcr)
 
-print('games that count: ' + str(len(games_that_count)))
-print('AGCR: ' + str(agcr) + '%')
+print(
+    'Games that count: ' + str(len(games_that_count)) +
+    ', AGCR: ' + '{0:.2f}'.format(agcr) + '%, ' +
+    'Failed Games: ' + str(len(failed_games))
+)  # Status Message
+
+if not DEBUG: failed_games = []
 
 """""""""""""""""""""""""""""""""""""""
 AGCR-impact calculations
@@ -289,7 +294,7 @@ high_outliers = []
 # TODO: This (and everything) seems to be biased away from numbers <1% - switch AGCR to use numpy numbers?
 # List outliers
 for game in games:
-    if game['counts'] and game['app_name'] not in black_listed_games:
+    if game['app_name'] not in black_listed_games:
         if game['impact'] > impact_upper_quartile:
             high_outliers.append(game)
 
@@ -311,7 +316,7 @@ if len(high_outliers) < 10:
     del high_games_remove
 
 high_outliers.sort(key=lambda x: x['impact'], reverse=True)
-high_outliers = high_outliers[0:10]
+high_outliers = high_outliers[:10]
 
 with open('outliers.json', 'w') as file:
     json.dump(high_outliers, file, indent=2)
@@ -331,7 +336,7 @@ del game
 del eighty_games_list_remove
 
 eighty_games_list.sort(key=lambda x: x['completion'], reverse=True)
-eighty_games_list = eighty_games_list[0:22]
+eighty_games_list = eighty_games_list[:22]
 
 # Games that are high impact and low achievement count
 hilo_games = games.copy()
@@ -348,7 +353,7 @@ del hilo_games_remove
 
 hilo_games.sort(key=lambda x: (x['impact'], x['achievements_total']))
 hilo_games.reverse()
-hilo_games = hilo_games[0:10]
+hilo_games = hilo_games[:10]
 
 with open('hilo_games.json', 'w') as file:
     json.dump(high_outliers, file, indent=2)
@@ -365,6 +370,7 @@ for game in high_games:
 for game in high_games_remove:
     high_games.remove(game)
 del game
+del high_games_remove
 
 high_games.sort(key=lambda x: x['impact'], reverse=True)
 high_games = high_games[0:10]
@@ -381,6 +387,8 @@ for game in one_games_list_remove:
     one_games_list.remove(game)
 del game
 del one_games_list_remove
+
+one_games_list.sort(key=lambda x: x['how_long'], reverse=True)
 one_games_list = one_games_list[0:22]
 
 # TODO: List of achievements with high global completion% that are not done in high impact games
@@ -399,8 +407,8 @@ achievements_left = 0
 for game in games:
     eighty_games += 1 if 0.8 < game['completion'] < 1.0 else 0
     one_games += 1 if game['achievements_done'] == 1 else 0
-    achievements_unlocked += game['achievements_done'] if game['counts'] else 0
-    achievements_left += game['achievements_total'] if game['counts'] else 0
+    achievements_unlocked += game['achievements_done']
+    achievements_left += game['achievements_total']
 achievements_left -= achievements_unlocked
 
 # Set up template and file
@@ -411,11 +419,11 @@ template = environment.get_template("template.html")
 # Render output file
 context = {
     'agcr': agcr,
-    'games_count': '{:n}'.format(len(games_that_count)),
-    'eighty_games': '{:n}'.format(eighty_games),
-    'one_games': '{:n}'.format(one_games),
-    'achievements_unlocked': '{:n}'.format(achievements_unlocked),
-    'achievements_left': '{:n}'.format(achievements_left),
+    'games_count': '{:,}'.format(len(games_that_count)),
+    'eighty_games': '{:,}'.format(eighty_games),
+    'one_games': '{:,}'.format(one_games),
+    'achievements_unlocked': '{:,}'.format(achievements_unlocked),
+    'achievements_left': '{:,}'.format(achievements_left),
     'failed_games': failed_games,
     'highest_impact': high_outliers,
     'hilo_games': hilo_games,
