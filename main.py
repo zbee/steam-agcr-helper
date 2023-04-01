@@ -154,17 +154,19 @@ del achievement
 del game_achievements
 del user_stats
 del log
-if not DEBUG: failed_games = []
 eta.done()
 
 """""""""""""""""""""""""""""""""""""""
 AGCR calculation
 """""""""""""""""""""""""""""""""""""""
-print("Formatting data and calculating AGCR ...")  # Status Message
+print("Formatting data and Loading HowLongToBeat info ...")  # Status Message
+
+eta = ETA(total, modulo=2)
 
 games = {}
 achievements_done = 0
 for achievement in achievements:
+    eta.print_status()
     game = achievement['game']
 
     # Track number of completed achievements total
@@ -172,6 +174,16 @@ for achievement in achievements:
 
     # Instantiate tracking of a game
     if game not in games.keys():
+        # Poll HowLongToBeat to get estimates on the time it would take to 100%
+        results_list = HowLongToBeat(0.3).search(
+            achievement['game_name'],
+            similarity_case_sensitive=False
+        )
+        how_long = -1.0
+        if results_list is not None and len(results_list) > 0:
+            best_element = max(results_list, key=lambda element: element.similarity)
+            how_long = best_element.completionist
+
         games[game] = {
             'app_id': game,
             'app_name': achievement['game_name'],
@@ -179,8 +191,9 @@ for achievement in achievements:
             'completion': 0.0,
             'achievements_total': 1,
             'achievements_done': 1 if achievement['achieved'] else 0,
-            'impact': 0.0,
+            'impact': Decimal(0.0),
             'playtime': achievement['playtime'],
+            'how_long': how_long,
             'achievements': {
                 achievement['apiname']: achievement['achieved']
             }
@@ -195,6 +208,11 @@ for achievement in achievements:
 
 del achievements
 del achievement
+del how_long
+del results_list
+eta.done()
+
+print("Calculating AGCR ...")  # Status Message
 
 # Get the numbers for which games count towards the user's AGCR and their completion%
 games_that_count = []
@@ -253,7 +271,7 @@ for game_id, game in enumerate(games):
             calculation_agcr /= Decimal(len(games_that_count))
             calculation_agcr *= Decimal(100)
             # Save the difference in AGCR values
-            games[game_id]['impact'] = abs(calculation_agcr - float(agcr))
+            games[game_id]['impact'] = (calculation_agcr - agcr).copy_abs()
             break
 
 del game_id
@@ -299,23 +317,6 @@ for game in games:
     if game['app_name'] not in black_listed_games:
         if game['impact'] > impact_upper_quartile:
             high_outliers.append(game)
-
-# Pad out this list so that all sections are the same quantity of games
-if len(high_outliers) < 10:
-    high_games = games.copy()
-    high_games_remove = []
-
-    for game in high_games:
-        if (game['app_name'] in black_listed_games) or (game in high_outliers):
-            high_games_remove.append(game)
-    for game in high_games_remove:
-        high_games.remove(game)
-
-    high_outliers.extend(high_games)
-
-    del game
-    del high_games
-    del high_games_remove
 
 high_outliers.sort(key=lambda x: x['impact'], reverse=True)
 high_outliers = high_outliers[:10]
@@ -375,7 +376,24 @@ del game
 del high_games_remove
 
 high_games.sort(key=lambda x: x['impact'], reverse=True)
-high_games = high_games[0:10]
+high_games = high_games[:10]
+
+# Games that are short to complete
+quick_games = games.copy()
+quick_games_remove = []
+
+for game in quick_games:
+    if (game['app_name'] in black_listed_games) or (game in high_outliers) or (game in hilo_games) \
+            or (game in eighty_games_list) or (game in high_games) or (game['how_long'] < 1.0) or \
+            (game['completion'] == 1):
+        quick_games_remove.append(game)
+for game in quick_games_remove:
+    quick_games.remove(game)
+del game
+del quick_games_remove
+
+quick_games.sort(key=lambda x: x['how_long'])
+quick_games = quick_games[:10]
 
 # TODO: 1-achievement list displays 10 less than the count at the top of the page
 # Games that are only 1 achievement
@@ -390,7 +408,7 @@ for game in one_games_list_remove:
 del game
 del one_games_list_remove
 
-one_games_list.sort(key=lambda x: x['how_long'], reverse=True)
+one_games_list.sort(key=lambda x: x['how_long'])
 one_games_list = one_games_list[0:22]
 
 # TODO: List of achievements with high global completion% that are not done in high impact games
@@ -430,6 +448,7 @@ context = {
     'highest_impact': high_outliers,
     'hilo_games': hilo_games,
     'high_games': high_games,
+    'quick_games': quick_games,
     'eighty_games_list': eighty_games_list,
     'one_games_list': one_games_list,
 }

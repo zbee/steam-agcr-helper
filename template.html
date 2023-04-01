@@ -147,6 +147,35 @@
         {% endif %}
         <!-- /HiLo Games -->
 
+        <!-- Quick Games -->
+        {% if quick_games|length > 1 %}
+
+        <div class="w-full-h-full auto-rows-fr grid gap-x-16 gap-y-10 grid-cols-4 col-span-4 grid-flow-dense
+            pb-10 border-b border-zinc-500">
+
+            <div class="w-full h-full px-10 py-8 mx-auto rounded-lg drop-shadow-xl bg-transparent text-center items-start
+            col-span-2 row-span-2 text-zinc-100 font-bold float-right text-2xl">
+                Quick-to-100% Games
+            </div>
+
+            {% for game in quick_games %}
+            <div class="w-full h-full px-10 py-8 mx-auto rounded-lg drop-shadow-xl text-center items-start text-transparent cursor-pointer text-xl bg-zinc-500 font-bold row-span-2
+                bg-[url('https://cdn.akamai.steamstatic.com/steam/apps/{{ game['app_id'] }}/header.jpg')] bg-no-repeat bg-cover bg-center hover:text-zinc-100 hover:bg-blend-exclusion"
+                 onclick="window.open('steam://nav/games/details/{{ game['app_id'] }}', '_self')">
+
+                {{ game['app_name'] }}
+
+                <div class="bg-zinc-600 text-zinc-100 absolute top-0 right-0 rounded-bl-lg py-1 px-2 text-sm">
+                    {{ game['achievements_done'] }} / {{ game['achievements_total'] }}
+                </div>
+            </div>
+            {% endfor %}
+
+        </div>
+
+        {% endif %}
+        <!-- /Quick Games -->
+
         <!-- >80% Games -->
         {% if eighty_games_list|length > 1 %}
 
@@ -154,7 +183,7 @@
             pb-10 border-b border-zinc-500">
 
             <div class="w-full h-full px-10 py-8 mx-auto rounded-lg drop-shadow-xl bg-transparent text-center items-start
-            col-span-2 row-span-2 text-zinc-100 font-bold float-right text-2xl">
+            col-span-2 row-span-2 text-zinc-100 font-bold float-right col-start-3 text-2xl">
                 >80%-Completed Games
             </div>
 
@@ -183,7 +212,7 @@
             pb-10 border-b border-zinc-500">
 
             <div class="w-full h-full px-10 py-8 mx-auto rounded-lg drop-shadow-xl bg-transparent text-center items-start
-            col-span-2 row-span-2 text-zinc-100 font-bold float-right col-start-3 text-2xl">
+            col-span-2 row-span-2 text-zinc-100 font-bold float-right text-2xl">
                 High-Impact Games
             </div>
 
@@ -211,7 +240,7 @@
         <div class="w-full-h-full auto-rows-fr grid gap-x-16 gap-y-10 grid-cols-4 col-span-4 mb-10 grid-flow-dense">
 
             <div class="w-full h-full px-10 py-8 mx-auto rounded-lg drop-shadow-xl bg-transparent text-center items-start
-            col-span-2 row-span-2 text-zinc-100 font-bold text-2xl">
+            col-span-2 row-span-2 text-zinc-100 font-bold float-right col-start-3 text-2xl">
                 1-Achievement Games
             </div>
 
