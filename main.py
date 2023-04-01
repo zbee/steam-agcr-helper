@@ -3,15 +3,17 @@ Created in 2023 by Ethan Henderson (zbee) <ethan@zbee.codes> (zbee.codes)
 """
 # TODO: Reorganize into a class to allow for code-reuse and to find functionality easier
 
-import json
 import os
 import sys
 import time
 import webbrowser
+from decimal import *
 
 import numpy
+import simplejson as json
 from decouple import config
 from eta import ETA
+from howlongtobeatpy import HowLongToBeat
 from jinja2 import Environment, FileSystemLoader
 from steam import Steam
 
@@ -212,8 +214,9 @@ del game
 del completion
 
 # Average completion%, to 2 decimal places
-agcr = sum(running_completion_percent) / len(games_that_count) * 100
-agcr = '{0:.2f}'.format(agcr)
+agcr = Decimal(sum(running_completion_percent))
+agcr /= Decimal(len(games_that_count))
+agcr *= Decimal(100)
 
 print(
     'Games that count: ' + str(len(games_that_count)) +
@@ -246,10 +249,9 @@ for game_id, game in enumerate(games):
             # Change it to a 100% completion
             running_calculation[calc_id] = 1.0
             # Finding the new AGCR with that change
-            calculation_agcr = sum(running_calculation)
-            calculation_agcr /= len(games_that_count)
-            calculation_agcr *= 100
-            calculation_agcr = float('{0:.2f}'.format(calculation_agcr))
+            calculation_agcr = Decimal(sum(running_calculation))
+            calculation_agcr /= Decimal(len(games_that_count))
+            calculation_agcr *= Decimal(100)
             # Save the difference in AGCR values
             games[game_id]['impact'] = abs(calculation_agcr - float(agcr))
             break
@@ -287,7 +289,7 @@ for game in games:
 # Games that are unusually high impact on AGCR
 # Determine upper threshold of "normal" impact of games # Top 10%
 impact_upper_quartile = numpy.array(running_completion_percent)
-impact_upper_quartile = numpy.quantile(impact_upper_quartile, 0.9)
+impact_upper_quartile = Decimal(numpy.quantile(impact_upper_quartile, 0.9))
 
 high_outliers = []
 
@@ -405,8 +407,8 @@ one_games = 0
 achievements_unlocked = 0
 achievements_left = 0
 for game in games:
-    eighty_games += 1 if 0.8 < game['completion'] < 1.0 else 0
-    one_games += 1 if game['achievements_done'] == 1 else 0
+    eighty_games += 1 if (0.8 < game['completion'] < 1.0 and game['app_name'] not in black_listed_games) else 0
+    one_games += 1 if (game['achievements_done'] == 1 and game['app_name'] not in black_listed_games) else 0
     achievements_unlocked += game['achievements_done']
     achievements_left += game['achievements_total']
 achievements_left -= achievements_unlocked
@@ -418,7 +420,7 @@ template = environment.get_template("template.html")
 
 # Render output file
 context = {
-    'agcr': agcr,
+    'agcr': '{0:.2f}'.format(agcr),
     'games_count': '{:,}'.format(len(games_that_count)),
     'eighty_games': '{:,}'.format(eighty_games),
     'one_games': '{:,}'.format(one_games),
