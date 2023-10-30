@@ -92,6 +92,8 @@ print("Downloading game and achievement data from Steam ...")  # Status Message
 
 # Get a list of the user's games
 games = steam.users.get_owned_games(steam_id=steam_id)
+if 'games' not in games.keys():
+    sys.exit('User\'s games not loaded')
 total = len(games['games'])
 
 # TODO: Bring back app data checking, try to use it to load achievements a 2nd way + filter out software/betas + global%
@@ -288,7 +290,7 @@ del file
 """""""""""""""""""""""""""""""""""""""
 Resolution calculations
 """""""""""""""""""""""""""""""""""""""
-print("Calculation resolution methods ...")  # Status Message
+print("Calculating resolution methods ...")  # Status Message
 
 # List of games that are "black-listed"
 """
