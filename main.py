@@ -1,7 +1,8 @@
 """
 Created in 2023 by Ethan Henderson (zbee) <ethan@zbee.codes> (zbee.codes)
 """
-# TODO: Reorganize into a class to allow for code-reuse and to find functionality easier
+# TODO: Reorganize into a class to allow for code-reuse and to find functionality
+#  more easily
 
 import os
 import sys
@@ -73,6 +74,7 @@ while user == 'No match':
         print('Copy the value from Edit Profile > Custom URL')
     # Ask for the username
     username = input('Username: ')
+    # TODO: ask for their whole URL, and inform about privacy settings requirements
     # Search for the username
     user = steam.users.search_user(search=username)
 
@@ -83,7 +85,7 @@ if not bypassed:
 
     steam_id = user['player']['steamid']
 
-# TODO: Try to get the user's profile picture to put top-right
+# TODO: Try to get the user's profile picture in base64 to put top-right
 
 """""""""""""""""""""""""""""""""""""""
 Actual data loading
@@ -96,7 +98,8 @@ if 'games' not in games.keys():
     sys.exit('User\'s games not loaded')
 total = len(games['games'])
 
-# TODO: Bring back app data checking, try to use it to load achievements a 2nd way + filter out software/betas + global%
+# TODO: Bring back app data checking, try to use it to load achievements a 2nd way
+#  + filter out software/betas + get the global% of an achievement
 
 achievements = []
 failed_games = []
@@ -116,15 +119,20 @@ with open('debug.log.json', 'a') as log:
             user_stats = steam.apps.get_user_achievements(
                 steam_id=int(steam_id), app_id=app_id
             )
+            # TODO: put this in a thread
+            # TODO: get playtime as well ... ask to ignore high playtime/low
+            #  achievement games?
         except:
             if DEBUG: log.write(f"user data load: {app_id} ({game['name']}) \n")
             failed_games.append(game['name'])
+            # TODO: try again for a failed game? try another way?
             continue
 
         # Avoid Rate limiting
         time.sleep(DELAY)
 
         # Skip games that failed to load achievements (unknown reason why)
+        # TODO: figure this out
         try:
             if not user_stats['playerstats']['success']:
                 if DEBUG: log.write(f"app has user data: {app_id} ({game['name']}) \n")
@@ -181,6 +189,7 @@ for achievement in achievements:
             achievement['game_name'],
             similarity_case_sensitive=False
         )
+        # TODO: put this in a thread
         how_long = -1.0
         if results_list is not None and len(results_list) > 0:
             best_element = max(results_list, key=lambda element: element.similarity)
@@ -243,6 +252,8 @@ print(
     ', AGCR: ' + '{0:.2f}'.format(agcr) + '%, ' +
     'Failed Games: ' + str(len(failed_games))
 )  # Status Message
+# TODO: Include total number of games, an total number of games that have
+#  achievements
 
 if not DEBUG: failed_games = []
 
@@ -260,6 +271,7 @@ games = real_games
 del real_games
 del trash
 
+# TODO: this math is dubious - use higher precision numbers as a fix? numpy?
 # Determine impact of this game on AGCR
 for game_id, game in enumerate(games):
     for calc_id, percent in enumerate(running_completion_percent):
@@ -295,7 +307,7 @@ print("Calculating resolution methods ...")  # Status Message
 # List of games that are "black-listed"
 """
 These are games that will not be included in any of the recommended sections
->1h play time, <5h play time, <5% achievements + manual entries
+>2h play time, <6h play time, <5% achievements + manual entries
 The automatically added games are meant to be "Games you tried to and did not like"
 """
 black_listed_games = []
@@ -303,7 +315,7 @@ black_listed_games.extend(BLACK_LISTED_GAMES)
 
 for game in games:
     if game['app_name'] not in BLACK_LISTED_GAMES:
-        if game['completion'] < 0.05 and 60 < game['playtime'] < 300:
+        if game['completion'] < 0.05 and 120 < game['playtime'] < 360:
             black_listed_games.append(game['app_name'])
 
 # Games that are unusually high impact on AGCR
@@ -399,6 +411,7 @@ quick_games = quick_games[:10]
 
 # TODO: 1-achievement list displays 10 less than the count at the top of the page
 # Games that are only 1 achievement
+# TODO: Do not include games with only 1 achievement total
 one_games_list = games.copy()
 one_games_list_remove = []
 
